@@ -16,10 +16,10 @@ const supabase = createClient(
 
 const TEXT_POSTABLE = new Set(["facebook", "linkedin", "twitter"]);
 
-async function getConnection(uid: string, platform: string) {
+async function getConnection(uid: string, platform: string, workspaceId?: string) {
   const { data } = await supabase.from("platform_connections")
     .select("account_id, access_token, connected")
-    .eq("uid", uid).eq("platform", platform).maybeSingle();
+    .eq(workspaceId ? "workspace_id" : "uid", workspaceId || uid).eq("platform", platform).maybeSingle();
   if (!data?.connected || !data.access_token) return null;
   return data;
 }
@@ -74,14 +74,14 @@ async function postTwitter(token: string, content: string) {
   return `https://x.com/i/web/status/${id}`;
 }
 
-export default async (req: Request) => {
+export default async function handler(req: Request): Promise<Response> {
   if (req.method !== "POST") return new Response("Method Not Allowed", { status: 405 });
 
-  let body: { uid?: string; content?: string; media_url?: string; platforms?: string[] };
+  let body: { uid?: string; workspace_id?: string; content?: string; media_url?: string; platforms?: string[] };
   try { body = await req.json(); }
   catch { return new Response(JSON.stringify({ error: "Invalid JSON" }), { status: 400 }); }
 
-  const { uid, content, media_url, platforms } = body;
+  const { uid, workspace_id, content, media_url, platforms } = body;
   if (!uid || !content || !platforms?.length) {
     return new Response(JSON.stringify({ error: "uid, content, and platforms are required" }), { status: 400 });
   }
@@ -94,7 +94,7 @@ export default async (req: Request) => {
       continue;
     }
     try {
-      const conn = await getConnection(uid, platform);
+      const conn = await getConnection(uid, platform, workspace_id);
       if (!conn) { results[platform] = { success: false, error: "not_connected" }; continue; }
 
       let postUrl = "";
@@ -111,12 +111,10 @@ export default async (req: Request) => {
   // Save record
   const anySuccess = Object.values(results).some(r => r.success);
   await supabase.from("scheduled_posts").insert({
-    uid, content, media_url: media_url ?? "", platforms,
+    uid, workspace_id: workspace_id ?? null, content, media_url: media_url ?? "", platforms,
     status: anySuccess ? "published" : "failed",
     results, published_at: new Date().toISOString(),
   });
 
   return new Response(JSON.stringify({ results }), { headers: { "Content-Type": "application/json" } });
-};
-
-export const config = { path: "/api/publish-post" };
+}

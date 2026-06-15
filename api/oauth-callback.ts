@@ -5,19 +5,19 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY || ""
 );
 
-const SITE_URL = process.env.SITE_URL || process.env.VITE_SITE_URL || "https://velox-space.netlify.app";
+const SITE_URL = process.env.SITE_URL || process.env.VITE_SITE_URL || "";
 const REDIRECT_URI = `${SITE_URL}/api/oauth-callback`;
 
-async function upsertConn(uid: string, platform: string, accountId: string, accountName: string, token: string, connected: boolean, pictureUrl: string = "") {
+async function upsertConn(uid: string, platform: string, accountId: string, accountName: string, token: string, connected: boolean, pictureUrl: string = "", workspaceId: string = "") {
   await supabase.from("platform_connections").upsert({
-    id: `${uid}_${platform}`, uid, platform,
+    id: `${workspaceId || uid}_${platform}`, uid, workspace_id: workspaceId || null, platform,
     account_id: accountId, account_name: accountName, profile_picture_url: pictureUrl,
     access_token: token, connected, last_synced_at: new Date().toISOString(),
   });
 }
 
 // Meta — exchanges code, finds the user's Facebook Page + linked Instagram Business Account
-async function exchangeMeta(code: string, uid: string) {
+async function exchangeMeta(code: string, uid: string, workspaceId: string = "") {
   const appId = process.env.META_APP_ID || process.env.VITE_META_APP_ID;
   const shortRes = await fetch(
     `https://graph.facebook.com/v18.0/oauth/access_token?grant_type=authorization_code` +
@@ -46,23 +46,37 @@ async function exchangeMeta(code: string, uid: string) {
   if (!page) {
     // No Page found — still save a Facebook connection using the user token,
     // but mark Instagram as unavailable.
-    await upsertConn(uid, "facebook", "", "No Facebook Page found", userToken, false);
-    await upsertConn(uid, "instagram", "", "No Instagram Business Account linked", "", false);
+    await upsertConn(uid, "facebook", "", "No Facebook Page found", userToken, false, workspaceId);
+    await upsertConn(uid, "instagram", "", "No Instagram Business Account linked", "", false, workspaceId);
     return;
   }
 
   const pageToken = page.access_token || userToken;
-  await upsertConn(uid, "facebook", page.id, page.name ?? "Facebook Page", pageToken, true, page.picture?.data?.url ?? "");
+  await upsertConn(uid, "facebook", page.id, page.name ?? "Facebook Page", pageToken, true, page.picture?.data?.url ?? "", workspaceId);
 
   const ig = page.instagram_business_account;
   if (ig) {
-    await upsertConn(uid, "instagram", ig.id, ig.username ?? ig.name ?? "Instagram Account", pageToken, true, ig.profile_picture_url ?? "");
+    await upsertConn(uid, "instagram", ig.id, ig.username ?? ig.name ?? "Instagram Account", pageToken, true, ig.profile_picture_url ?? "", workspaceId);
   } else {
-    await upsertConn(uid, "instagram", "", "No Instagram Business Account linked to this Page", "", false);
+    await upsertConn(uid, "instagram", "", "No Instagram Business Account linked to this Page", "", false, workspaceId);
+  }
+
+  // Also look for an ad account (for Meta Ads analytics)
+  try {
+    const adRes = await fetch(`https://graph.facebook.com/v18.0/me/adaccounts?fields=id,name,account_status&access_token=${userToken}`);
+    const adData = await adRes.json();
+    const account = adData.data?.find((a: any) => a.account_status === 1) ?? adData.data?.[0];
+    if (account) {
+      await upsertConn(uid, "meta_ads", account.id, account.name || "Meta Ad Account", userToken, true, workspaceId);
+    } else {
+      await upsertConn(uid, "meta_ads", "", "No ad account found", "", false, workspaceId);
+    }
+  } catch {
+    await upsertConn(uid, "meta_ads", "", "No ad account access", "", false, workspaceId);
   }
 }
 
-async function exchangeGoogle(code: string, uid: string) {
+async function exchangeGoogle(code: string, uid: string, workspaceId: string = "") {
   const body = new URLSearchParams({
     code, grant_type: "authorization_code",
     client_id: process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID || "",
@@ -91,11 +105,11 @@ async function exchangeGoogle(code: string, uid: string) {
   });
 
   const channelPic = ch?.snippet?.thumbnails?.default?.url ?? "";
-  await upsertConn(uid, "youtube", ch?.id ?? "", ch?.snippet?.title ?? "YouTube Channel", tokenPayload, true, channelPic);
-  await upsertConn(uid, "google_ads", "google_ads", "Google Ads Account", tokenPayload, true);
+  await upsertConn(uid, "youtube", ch?.id ?? "", ch?.snippet?.title ?? "YouTube Channel", tokenPayload, true, channelPic, workspaceId);
+  await upsertConn(uid, "google_ads", "google_ads", "Google Ads Account", tokenPayload, true, workspaceId);
 }
 
-async function exchangeTikTok(code: string, uid: string) {
+async function exchangeTikTok(code: string, uid: string, workspaceId: string = "") {
   const res = await fetch("https://business-api.tiktok.com/open_api/v1.3/oauth2/access_token/", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -111,10 +125,10 @@ async function exchangeTikTok(code: string, uid: string) {
 
   const token = data.data?.access_token ?? "";
   const advertisers = data.data?.advertiser_ids ?? [];
-  await upsertConn(uid, "tiktok", advertisers[0] ?? "", data.data?.display_name ?? "TikTok Account", token, true, data.data?.avatar_url ?? "");
+  await upsertConn(uid, "tiktok", advertisers[0] ?? "", data.data?.display_name ?? "TikTok Account", token, true, data.data?.avatar_url ?? "", workspaceId);
 }
 
-async function exchangeLinkedIn(code: string, uid: string) {
+async function exchangeLinkedIn(code: string, uid: string, workspaceId: string = "") {
   const body = new URLSearchParams({
     grant_type: "authorization_code", code,
     client_id: process.env.LINKEDIN_CLIENT_ID || process.env.VITE_LINKEDIN_CLIENT_ID || "",
@@ -134,10 +148,10 @@ async function exchangeLinkedIn(code: string, uid: string) {
   });
   const profile = await profileRes.json();
 
-  await upsertConn(uid, "linkedin", profile.sub ?? "", profile.name ?? "LinkedIn Account", data.access_token, true, profile.picture ?? "");
+  await upsertConn(uid, "linkedin", profile.sub ?? "", profile.name ?? "LinkedIn Account", data.access_token, true, profile.picture ?? "", workspaceId);
 }
 
-async function exchangeTwitter(code: string, verifier: string, uid: string) {
+async function exchangeTwitter(code: string, verifier: string, uid: string, workspaceId: string = "") {
   const creds = Buffer.from(`${process.env.TWITTER_CLIENT_ID || process.env.VITE_TWITTER_CLIENT_ID}:${process.env.TWITTER_CLIENT_SECRET}`).toString("base64");
   const body = new URLSearchParams({
     code, grant_type: "authorization_code",
@@ -158,10 +172,10 @@ async function exchangeTwitter(code: string, verifier: string, uid: string) {
   const me = await meRes.json();
   const pic = (me.data?.profile_image_url ?? "").replace("_normal", "_400x400");
 
-  await upsertConn(uid, "twitter", me.data?.username ?? "", me.data?.name ?? "X Account", data.access_token, true, pic);
+  await upsertConn(uid, "twitter", me.data?.username ?? "", me.data?.name ?? "X Account", data.access_token, true, pic, workspaceId);
 }
 
-export default async (req: Request) => {
+export default async function handler(req: Request): Promise<Response> {
   const url   = new URL(req.url);
   const code  = url.searchParams.get("code");
   const state = url.searchParams.get("state") ?? "";
@@ -170,23 +184,24 @@ export default async (req: Request) => {
   if (error) return Response.redirect(`${SITE_URL}/?oauth_error=${encodeURIComponent(error)}`, 302);
   if (!code || !state) return Response.redirect(`${SITE_URL}/?oauth_error=missing_params`, 302);
 
-  const parts    = state.split("__");
-  const platform = parts[0];
-  const uid      = parts[1];
-  const pkceB64  = parts[2] ?? "";
+  const parts       = state.split("__");
+  const platform    = parts[0];
+  const uid         = parts[1];
+  const workspaceId = parts[2] ?? "";
+  const pkceB64     = parts[3] ?? "";
 
   if (!platform || !uid) {
     return Response.redirect(`${SITE_URL}/?oauth_error=${encodeURIComponent("invalid_state:" + state)}`, 302);
   }
 
   try {
-    if (platform === "meta") await exchangeMeta(code, uid);
-    else if (platform === "google") await exchangeGoogle(code, uid);
-    else if (platform === "tiktok") await exchangeTikTok(code, uid);
-    else if (platform === "linkedin") await exchangeLinkedIn(code, uid);
+    if (platform === "meta") await exchangeMeta(code, uid, workspaceId);
+    else if (platform === "google") await exchangeGoogle(code, uid, workspaceId);
+    else if (platform === "tiktok") await exchangeTikTok(code, uid, workspaceId);
+    else if (platform === "linkedin") await exchangeLinkedIn(code, uid, workspaceId);
     else if (platform === "twitter") {
       const verifier = pkceB64 ? Buffer.from(pkceB64, "base64").toString() : "";
-      await exchangeTwitter(code, verifier, uid);
+      await exchangeTwitter(code, verifier, uid, workspaceId);
     } else throw new Error(`Unknown platform: ${platform}`);
 
     return Response.redirect(`${SITE_URL}/?connected=${platform}`, 302);
@@ -194,6 +209,4 @@ export default async (req: Request) => {
     console.error(`OAuth error [${platform}]:`, err.message);
     return Response.redirect(`${SITE_URL}/?oauth_error=${encodeURIComponent(err.message)}`, 302);
   }
-};
-
-export const config = { path: "/api/oauth-callback" };
+}

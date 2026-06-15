@@ -36,7 +36,7 @@ function extractJSON(raw: string): any {
   return JSON.parse(match[0]);
 }
 
-export default async (req: Request) => {
+export default async function handler(req: Request): Promise<Response> {
   if (req.method !== "POST") return new Response("Method Not Allowed", { status: 405 });
 
   let body: { metrics?: any[]; posts?: any[]; ad_metrics?: any[] };
@@ -117,6 +117,4 @@ Rules:
       error: err.message,
     }), { headers: { "Content-Type": "application/json" } });
   }
-};
-
-export const config = { path: "/api/ai-insights" };
+}

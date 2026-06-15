@@ -462,14 +462,14 @@ async function syncGoogleAds(customerId: string, tokenJson: string): Promise<Syn
 }
 
 // ── Handler ───────────────────────────────────────────────────────────────────
-export default async (req: Request) => {
+export default async function handler(req: Request): Promise<Response> {
   if (req.method !== "POST") return new Response("Method Not Allowed", { status: 405 });
 
-  let body: { platform?: string; account_id?: string; access_token?: string };
+  let body: { platform?: string; account_id?: string; access_token?: string; workspace_id?: string; uid?: string };
   try { body = await req.json(); }
   catch { return new Response(JSON.stringify({ error: "Invalid JSON" }), { status: 400 }); }
 
-  const { platform, account_id, access_token } = body;
+  const { platform, account_id, access_token, workspace_id } = body;
   if (!platform || !access_token) {
     return new Response(JSON.stringify({ error: "platform and access_token are required" }), { status: 400 });
   }
@@ -496,8 +496,6 @@ export default async (req: Request) => {
     );
   }
 };
-
-export const config = { path: "/api/sync-platform" };
 
 // Note: google_ads uses the same Google OAuth token stored in platform_connections
 // The sync-platform function handles "youtube" → YouTube analytics

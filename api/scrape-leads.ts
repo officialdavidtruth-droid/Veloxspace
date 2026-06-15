@@ -106,7 +106,7 @@ Return ONLY valid JSON, no markdown:
   }
 }
 
-export default async (req: Request) => {
+export default async function handler(req: Request): Promise<Response> {
   if (req.method !== "POST") return new Response("Method Not Allowed", { status: 405 });
 
   if (!PLACES_KEY) {
@@ -190,6 +190,4 @@ export default async (req: Request) => {
   }
 
   return new Response(JSON.stringify({ results, total: results.length }), { headers: { "Content-Type": "application/json" } });
-};
-
-export const config = { path: "/api/scrape-leads" };
+}
