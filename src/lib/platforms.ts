@@ -8,6 +8,7 @@ export const PLATFORMS: PlatformConfig[] = [
   { id: "tiktok",     name: "TikTok",      color: "#69C9D0", bgColor: "#e0f7fa", darkBgColor: "#001a1c", handle: "@handle",     description: "Short-form video",        canPost: false },
   { id: "youtube",    name: "YouTube",     color: "#FF0000", bgColor: "#ffebee", darkBgColor: "#1a0000", handle: "Channel name",description: "Video hosting",           canPost: false },
   { id: "google_ads", name: "Google Ads",  color: "#4285F4", bgColor: "#e8f0fe", darkBgColor: "#001233", handle: "Ads account", description: "Search & display ads",    canPost: false },
+  { id: "meta_ads",   name: "Meta Ads",    color: "#0668E1", bgColor: "#e7f0fd", darkBgColor: "#00142e", handle: "Ad account",  description: "Facebook & Instagram ads", canPost: false },
 ];
 
 export const getPlatform = (id: PlatformId): PlatformConfig =>

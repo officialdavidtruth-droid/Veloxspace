@@ -1,16 +1,12 @@
 import React, { useState, useEffect } from "react";
 import { METRIC_DEFINITIONS } from "../lib/platforms";
 import { CURRENCIES, fmtCurrency, convertAmount } from "../lib/currency";
-import { supabase } from "../lib/supabase";
 import type { AppUser } from "../lib/supabase";
-import type { AdMetric } from "../types";
-import { ChevronDown, ChevronUp, Calculator, Save, CheckCircle2, Loader2, Info } from "lucide-react";
+import { ChevronDown, ChevronUp, Calculator, Info } from "lucide-react";
 
 export function Analytics({ user }: { user: AppUser }) {
   const [currency, setCurrency]   = useState("USD");
   const [expanded, setExpanded]   = useState<string | null>(null);
-  const [saving, setSaving]       = useState(false);
-  const [saved, setSaved]         = useState(false);
 
   // Calculator inputs
   const [adSpend,    setAdSpend]    = useState("");
@@ -44,23 +40,6 @@ export function Analytics({ user }: { user: AppUser }) {
     ER:   null as null,
   };
 
-  const saveMetrics = async () => {
-    if (!sp && !rv) return;
-    setSaving(true);
-    try {
-      if (user.uid !== "demo_v2") {
-        await supabase.from("ad_metrics").insert({
-          uid: user.uid, platform: "all", period_label: "Manual entry",
-          ad_spend: sp, revenue: rv, clicks: cl, impressions: im,
-          conversions: cv, leads: ld, currency,
-          recorded_at: new Date().toISOString(),
-        });
-      }
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
-    } catch (e) { console.error(e); }
-    finally { setSaving(false); }
-  };
 
   const fmtCalc = (def: typeof METRIC_DEFINITIONS[0]): string => {
     const val = (calc as any)[def.abbr];
@@ -106,7 +85,9 @@ export function Analytics({ user }: { user: AppUser }) {
           <Calculator size={16} className="gradient-text" /> Metrics Calculator
         </h2>
         <p className="text-xs mb-5" style={{ color: "var(--muted)" }}>
-          Enter your campaign data and all metrics are calculated instantly
+          A quick what-if calculator — enter any numbers to see how each formula works. This is for learning and
+          planning only; it doesn't affect or get mixed into your real connected-account data shown on Overview
+          and Ads Analytics.
         </p>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
           {[
@@ -128,11 +109,6 @@ export function Analytics({ user }: { user: AppUser }) {
             </div>
           ))}
         </div>
-        <button onClick={saveMetrics} disabled={saving || (!sp && !rv)}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium text-white gradient-primary hover:opacity-90 transition-all disabled:opacity-40">
-          {saving ? <Loader2 size={13} className="animate-spin" /> : saved ? <CheckCircle2 size={13} /> : <Save size={13} />}
-          {saving ? "Saving…" : saved ? "Saved!" : "Save to history"}
-        </button>
       </div>
 
       {/* Metric definition cards */}

@@ -1,4 +1,4 @@
-export type PlatformId = "instagram" | "facebook" | "linkedin" | "twitter" | "tiktok" | "youtube" | "google_ads";
+export type PlatformId = "instagram" | "facebook" | "linkedin" | "twitter" | "tiktok" | "youtube" | "google_ads" | "meta_ads";
 
 export interface PlatformConnection {
   id: string;
@@ -86,6 +86,56 @@ export interface AdMetric {
   recorded_at: string;
 }
 
+export interface AdBreakdown {
+  id: string;
+  uid: string;
+  platform: PlatformId | "all";
+  dimension: "age" | "gender" | "country" | "device" | "placement";
+  dimension_value: string;
+  spend: number;
+  impressions: number;
+  clicks: number;
+  conversions: number;
+  ctr: number;
+  cpc: number;
+  recorded_at: string;
+}
+
+export interface MetricHistory {
+  id: string;
+  uid: string;
+  platform: PlatformId | "all";
+  date: string;
+  followers: number;
+  following: number;
+  posts: number;
+  likes: number;
+  comments: number;
+  shares: number;
+  reach: number;
+  impressions: number;
+  engagement_rate: number;
+  profile_views: number;
+  recorded_at: string;
+}
+
+export interface AdCampaign {
+  id: string;
+  uid: string;
+  platform: PlatformId | "all";
+  campaign_name: string;
+  status: string;
+  spend: number;
+  impressions: number;
+  clicks: number;
+  conversions: number;
+  ctr: number;
+  cpc: number;
+  cpm: number;
+  roas: number;
+  recorded_at: string;
+}
+
 export interface ScheduledPost {
   id: string;
   uid: string;
@@ -97,6 +147,29 @@ export interface ScheduledPost {
   scheduled_for: string | null;
   created_at: string;
   published_at: string | null;
+}
+
+export type PlanId = "starter" | "pro" | "agency";
+export type WorkspaceType = "individual" | "agency";
+export type MemberRole = "owner" | "admin" | "member" | "viewer";
+
+export interface Workspace {
+  id: string;
+  name: string;
+  type: WorkspaceType;
+  plan: PlanId;
+  owner_uid: string;
+  created_at: string;
+}
+
+export interface WorkspaceMember {
+  id: string;
+  workspace_id: string;
+  uid: string;
+  email: string;
+  role: MemberRole;
+  status: "active" | "pending";
+  created_at: string;
 }
 
 export interface AppUser {

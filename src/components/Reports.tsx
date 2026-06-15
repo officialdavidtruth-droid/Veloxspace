@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "../lib/supabase";
+import { useWorkspace } from "../lib/workspace";
 import { PLATFORMS, METRIC_DEFINITIONS } from "../lib/platforms";
 import { CURRENCIES, fmtCurrency } from "../lib/currency";
 import type { AppUser } from "../lib/supabase";
@@ -12,14 +13,10 @@ function fmtNum(n: number): string {
   return n.toLocaleString();
 }
 
-const DEMO_SOCIAL: SocialMetric[] = [
-  { id:"1",uid:"demo_v2",platform:"instagram",followers:12400,following:842,posts:287,likes:4820,comments:340,shares:190,reach:28000,impressions:45000,engagement_rate:4.2,profile_views:1200,synced_at:new Date().toISOString() },
-  { id:"2",uid:"demo_v2",platform:"facebook", followers:8900, following:0,  posts:142,likes:2100,comments:180,shares:95, reach:15000,impressions:32000,engagement_rate:2.8,profile_views:780, synced_at:new Date().toISOString() },
-  { id:"3",uid:"demo_v2",platform:"tiktok",   followers:28400,following:320,posts:96, likes:48000,comments:2800,shares:6400,reach:142000,impressions:210000,engagement_rate:12.6,profile_views:8400,synced_at:new Date().toISOString() },
-];
 
 export function Reports({ user }: { user: AppUser }) {
   const [socialMetrics, setSocialMetrics] = useState<SocialMetric[]>([]);
+  const { workspace } = useWorkspace();
   const [adMetrics,     setAdMetrics]     = useState<AdMetric[]>([]);
   const [loading,       setLoading]       = useState(true);
   const [exporting,     setExporting]     = useState(false);
@@ -28,14 +25,9 @@ export function Reports({ user }: { user: AppUser }) {
   const reportRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (user.uid === "demo_v2") {
-      setSocialMetrics(DEMO_SOCIAL);
-      setLoading(false);
-      return;
-    }
     Promise.all([
-      supabase.from("social_metrics").select("*").eq("uid", user.uid),
-      supabase.from("ad_metrics").select("*").eq("uid", user.uid).order("recorded_at", { ascending: false }).limit(5),
+      supabase.from("social_metrics").select("*").eq("workspace_id", workspace?.id ?? ""),
+      supabase.from("ad_metrics").select("*").eq("workspace_id", workspace?.id ?? "").order("recorded_at", { ascending: false }).limit(5),
     ]).then(([s, a]) => {
       setSocialMetrics((s.data as SocialMetric[]) ?? []);
       setAdMetrics((a.data as AdMetric[]) ?? []);

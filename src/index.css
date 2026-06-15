@@ -135,3 +135,25 @@ body {
   border-radius: 9999px;
   box-shadow: 0 0 0 2px var(--card), 0 0 0 4px var(--border);
 }
+
+/* ── VeloxSpace logo glow / loading animation ─────────────────────────── */
+@keyframes velox-pulse-glow {
+  0%, 100% {
+    filter: drop-shadow(0 0 2px rgba(253, 224, 71, 0.4)) drop-shadow(0 0 0px rgba(253, 224, 71, 0));
+  }
+  50% {
+    filter: drop-shadow(0 0 10px rgba(253, 224, 71, 0.95)) drop-shadow(0 0 18px rgba(253, 224, 71, 0.5));
+  }
+}
+@keyframes velox-bolt-flicker {
+  0%, 100% { opacity: 0.85; }
+  45%      { opacity: 1; }
+  50%      { opacity: 0.6; }
+  55%      { opacity: 1; }
+}
+.velox-mark-animate {
+  animation: velox-pulse-glow 1.6s ease-in-out infinite;
+}
+.velox-mark-animate .velox-bolt {
+  animation: velox-bolt-flicker 1.6s ease-in-out infinite;
+}

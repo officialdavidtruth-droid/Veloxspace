@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "./lib/supabase";
 import { ThemeProvider } from "./lib/theme";
+import { WorkspaceProvider, useWorkspace } from "./lib/workspace";
 import { Layout } from "./components/Layout";
 import { Overview } from "./components/Overview";
 import { PlatformPage } from "./components/PlatformPage";
@@ -8,6 +9,16 @@ import { Analytics } from "./components/Analytics";
 import { Reports } from "./components/Reports";
 import { Settings } from "./components/Settings";
 import { Composer } from "./components/Composer";
+import { WorkspaceProvider } from "./lib/workspace";
+import { PlanGate } from "./components/PlanGate";
+import { PMS } from "./components/PMS";
+import { LeadScraper } from "./components/LeadScraper";
+import { LoadingScreen } from "./components/LoadingScreen";
+import { AdsAnalytics } from "./components/AdsAnalytics";
+import { Team } from "./components/Team";
+import { Billing } from "./components/Billing";
+import { VeloxMark, VeloxWordmark } from "./components/VeloxLogo";
+import { LoadingScreen } from "./components/LoadingScreen";
 import type { AppUser } from "./lib/supabase";
 import type { PlatformId } from "./types";
 import { Loader2, Zap, Mail, Lock, UserPlus, LogIn } from "lucide-react";
@@ -15,10 +26,13 @@ import { Loader2, Zap, Mail, Lock, UserPlus, LogIn } from "lucide-react";
 export type Page =
   | "overview"
   | "composer"
+  | "ads"
   | PlatformId
   | "analytics"
   | "reports"
-  | "settings";
+  | "settings"
+  | "team"
+  | "billing";
 
 export default function App() {
   const [user, setUser]     = useState<AppUser | null>(null);
@@ -55,21 +69,15 @@ export default function App() {
     setUser(null);
   };
 
-  const handleDemo = () => {
-    setUser({ uid: "demo_v2", email: "demo@veloxspace.app", name: "Demo User" });
-  };
-
   if (loading) return (
     <ThemeProvider>
-      <div className="h-full flex items-center justify-center" style={{ background: "var(--bg)" }}>
-        <Loader2 size={28} className="text-brand animate-spin" />
-      </div>
+      <LoadingScreen />
     </ThemeProvider>
   );
 
   if (!user) return (
     <ThemeProvider>
-      <LoginPage onDemo={handleDemo} />
+      <LoginPage />
     </ThemeProvider>
   );
 
@@ -77,9 +85,14 @@ export default function App() {
     if (!user) return null;
     if (page === "overview")   return <Overview   user={user} onNavigate={setPage} />;
     if (page === "composer")   return <Composer   user={user} />;
+    if (page === "ads")         return <PlanGate feature="adsAnalytics"><AdsAnalytics user={user} /></PlanGate>;
+    if (page === "pms")         return <PlanGate feature="pms"><PMS user={user} /></PlanGate>;
+    if (page === "leads")       return <PlanGate feature="leadScraper"><LeadScraper user={user} /></PlanGate>;
     if (page === "analytics")  return <Analytics  user={user} />;
-    if (page === "reports")    return <Reports    user={user} />;
+    if (page === "reports")    return <PlanGate feature="pdfReports"><Reports user={user} /></PlanGate>;
     if (page === "settings")   return <Settings   user={user} />;
+    if (page === "team")        return <Team       user={user} />;
+    if (page === "billing")     return <Billing    user={user} />;
     // Platform pages
     const platforms: PlatformId[] = ["instagram","facebook","linkedin","twitter","tiktok","youtube","google_ads"];
     if (platforms.includes(page as PlatformId)) {
@@ -90,14 +103,26 @@ export default function App() {
 
   return (
     <ThemeProvider>
-      <Layout user={user} page={page} onNavigate={setPage} onSignOut={handleSignOut}>
-        {renderPage()}
-      </Layout>
+      <WorkspaceProvider user={user}>
+        <AppShell user={user} page={page} setPage={setPage} onSignOut={handleSignOut} renderPage={renderPage} />
+      </WorkspaceProvider>
     </ThemeProvider>
   );
 }
 
-function LoginPage({ onDemo }: { onDemo: () => void }) {
+function AppShell({ user, page, setPage, onSignOut, renderPage }: {
+  user: AppUser; page: Page; setPage: (p: Page) => void; onSignOut: () => void; renderPage: () => React.ReactNode;
+}) {
+  const { loading } = useWorkspace();
+  if (loading) return <LoadingScreen label="Setting up your workspace…" />;
+  return (
+    <Layout user={user} page={page} onNavigate={setPage} onSignOut={onSignOut}>
+      {renderPage()}
+    </Layout>
+  );
+}
+
+function LoginPage() {
   const [mode, setMode]       = useState<"signin"|"signup">("signin");
   const [email, setEmail]     = useState("");
   const [password, setPassword] = useState("");
@@ -129,11 +154,11 @@ function LoginPage({ onDemo }: { onDemo: () => void }) {
         <div className="rounded-2xl p-8 shadow-lg border" style={{ background: "var(--card)", borderColor: "var(--border)" }}>
           {/* Logo */}
           <div className="text-center mb-6">
-            <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4 gradient-primary shadow-lg">
-              <Zap size={26} className="text-white" fill="currentColor" />
+            <div className="flex items-center justify-center mx-auto mb-4">
+              <VeloxMark size={56} />
             </div>
             <h1 className="font-display text-2xl font-semibold tracking-tight mb-1" style={{ color: "var(--text)" }}>
-              Velox<span className="gradient-text">Space</span>
+              <VeloxWordmark />
             </h1>
             <p className="text-sm" style={{ color: "var(--muted)" }}>The marketing command center for social & ads</p>
           </div>
@@ -170,17 +195,6 @@ function LoginPage({ onDemo }: { onDemo: () => void }) {
             </button>
           </div>
 
-          <div className="flex items-center gap-3 my-4">
-            <div className="flex-1 h-px" style={{ background: "var(--border)" }} />
-            <span className="text-xs" style={{ color: "var(--muted)" }}>or</span>
-            <div className="flex-1 h-px" style={{ background: "var(--border)" }} />
-          </div>
-
-          <button onClick={onDemo}
-            className="w-full text-sm py-2.5 px-4 rounded-xl transition-all border"
-            style={{ color: "var(--muted)", borderColor: "var(--border)", background: "transparent" }}>
-            Continue as demo
-          </button>
         </div>
         <p className="text-center text-xs mt-4" style={{ color: "var(--muted)" }}>Free plan · No credit card needed</p>
       </div>

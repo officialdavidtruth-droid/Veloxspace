@@ -1,23 +1,20 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
+import { useWorkspace } from "../lib/workspace";
 import { getPlatform } from "../lib/platforms";
 import { TopPosts } from "./TopPosts";
+import { LoadingInline } from "./LoadingScreen";
+import { GrowthTrend } from "./GrowthTrend";
+import { EngagementBreakdown } from "./EngagementBreakdown";
 import { AIInsights } from "./AIInsights";
 import type { AppUser } from "../lib/supabase";
 import type { PlatformId, SocialMetric, PlatformPost, AIInsight } from "../types";
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { RefreshCw, Wifi, WifiOff, AlertCircle, TrendingUp, Users, Eye, Heart, Loader2 } from "lucide-react";
 
 function fmtNum(n: number): string {
   if (n >= 1_000_000) return `${(n/1_000_000).toFixed(2)}M`;
   if (n >= 1_000) return `${(n/1_000).toFixed(1)}k`;
   return n.toLocaleString();
-}
-function genTrend(base: number, label: string) {
-  return Array.from({ length: 7 }, (_, i) => ({
-    day: ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"][i],
-    [label]: Math.round(base * (0.88 + Math.random() * 0.24)),
-  }));
 }
 const getPlatformEmoji = (id: string) =>
   ({ instagram:"📸",facebook:"👥",linkedin:"💼",twitter:"🐦",tiktok:"🎵",youtube:"▶️",google_ads:"📊" }[id] ?? "📊");
@@ -62,9 +59,20 @@ export function PlatformPage({ user, platformId }: { user: AppUser; platformId: 
       if (data.error && !data.metrics) throw new Error(data.error);
 
       if (data.metrics) {
-        const row = { uid: user.uid, platform: platformId, ...data.metrics, synced_at: new Date().toISOString() };
-        await supabase.from("social_metrics").upsert({ ...row, id: `${user.uid}_${platformId}` });
-        setMetric({ id: `${user.uid}_${platformId}`, ...row } as SocialMetric);
+        const row = { uid: user.uid, platform: platformId, workspace_id: workspace?.id, ...data.metrics, synced_at: new Date().toISOString() };
+        await supabase.from("social_metrics").upsert({ ...row, id: `${workspace?.id}_${platformId}` });
+        setMetric({ id: `${workspace?.id}_${platformId}`, ...row } as SocialMetric);
+
+        // Record today's snapshot for day-to-day trend tracking
+        const today = new Date().toISOString().split("T")[0];
+        await supabase.from("metric_history").upsert({
+          id: `${workspace?.id}_${platformId}_${today}`, uid: user.uid, workspace_id: workspace?.id, platform: platformId, date: today,
+          followers: data.metrics.followers ?? 0, following: data.metrics.following ?? 0, posts: data.metrics.posts ?? 0,
+          likes: data.metrics.likes ?? 0, comments: data.metrics.comments ?? 0, shares: data.metrics.shares ?? 0,
+          reach: data.metrics.reach ?? 0, impressions: data.metrics.impressions ?? 0,
+          engagement_rate: data.metrics.engagement_rate ?? 0, profile_views: data.metrics.profile_views ?? 0,
+          recorded_at: new Date().toISOString(),
+        });
       }
       if (data.posts?.length) {
         const rows = data.posts.map((p: any, i: number) => ({ ...p, id: `${user.uid}_${platformId}_${p.post_id ?? i}`, uid: user.uid, platform: platformId, synced_at: new Date().toISOString() }));
@@ -74,7 +82,7 @@ export function PlatformPage({ user, platformId }: { user: AppUser; platformId: 
       }
       if (data.ad_metrics) {
         await supabase.from("ad_metrics").insert({
-          uid: user.uid, platform: platformId, period_label: "Last 30 days",
+          uid: user.uid, workspace_id: workspace?.id, platform: platformId, period_label: "Last 30 days",
           ...data.ad_metrics, recorded_at: new Date().toISOString(),
         });
       }
@@ -99,10 +107,9 @@ export function PlatformPage({ user, platformId }: { user: AppUser; platformId: 
     finally { setAiLoading(false); }
   };
 
-  if (loading) return <div className="flex items-center justify-center py-24"><Loader2 size={22} className="animate-spin" style={{ color:"var(--primary)" }} /></div>;
+  if (loading) return <LoadingInline />;
 
   const isConnected = !!(connection?.access_token);
-  const trendData   = metric ? genTrend(metric.followers, "Followers") : [];
   const avatarUrl   = metric?.profile_picture_url || connection?.profile_picture_url;
 
   return (
@@ -174,22 +181,14 @@ export function PlatformPage({ user, platformId }: { user: AppUser; platformId: 
             ))}
           </div>
 
-          {/* Trend chart */}
-          <div className="glow-card rounded-2xl p-5">
-            <h4 className="text-sm font-medium mb-4" style={{ color:"var(--text)" }}>Follower trend (7 days)</h4>
-            <div className="h-52">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={trendData} margin={{ top:5, right:5, left:-30, bottom:0 }}>
-                  <defs><linearGradient id={`g_${platformId}`} x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor={platform.color} stopOpacity={0.25}/><stop offset="95%" stopColor={platform.color} stopOpacity={0}/></linearGradient></defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)"/>
-                  <XAxis dataKey="day" stroke="var(--muted)" fontSize={10}/>
-                  <YAxis stroke="var(--muted)" fontSize={10}/>
-                  <Tooltip contentStyle={{ background:"var(--card)", border:"1px solid var(--border)", borderRadius:"10px", color:"var(--text)", fontSize:"12px" }}/>
-                  <Area type="monotone" dataKey="Followers" stroke={platform.color} strokeWidth={2} fill={`url(#g_${platformId})`}/>
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
+          {/* Insights: real day-to-day growth */}
+          <div>
+            <h2 className="font-display text-sm font-semibold uppercase tracking-wider mb-3" style={{ color:"var(--muted)" }}>Insights</h2>
+            <GrowthTrend workspaceId={workspace?.id ?? ""} platform={platformId} color={platform.color} title={`${platform.name} growth`} />
           </div>
+
+          {/* Engagement breakdown */}
+          <EngagementBreakdown metric={metric} />
 
           {/* AI + Top Posts */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

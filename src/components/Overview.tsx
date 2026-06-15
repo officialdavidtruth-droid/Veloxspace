@@ -1,8 +1,11 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
+import { useWorkspace } from "../lib/workspace";
 import { PLATFORMS, METRIC_DEFINITIONS } from "../lib/platforms";
 import { AIInsights } from "./AIInsights";
 import { TopPosts } from "./TopPosts";
+import { LoadingInline } from "./LoadingScreen";
+import { GrowthTrend } from "./GrowthTrend";
 import type { AppUser } from "../lib/supabase";
 import type { Page } from "../App";
 import type { SocialMetric, PlatformPost, AIInsight, AdMetric } from "../types";
@@ -26,6 +29,7 @@ export function Overview({ user, onNavigate }: { user: AppUser; onNavigate: (p: 
   const [topPosts,  setTopPosts]  = useState<PlatformPost[]>([]);
   const [insight,   setInsight]   = useState<AIInsight | null>(null);
   const [adMetrics, setAdMetrics] = useState<AdMetric[]>([]);
+  const { workspace } = useWorkspace();
   const [loading,   setLoading]   = useState(true);
   const [syncing,   setSyncing]   = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
@@ -35,10 +39,10 @@ export function Overview({ user, onNavigate }: { user: AppUser; onNavigate: (p: 
 
   const loadData = async () => {
     const [mRes, pRes, iRes, aRes] = await Promise.all([
-      supabase.from("social_metrics").select("*").eq("uid", user.uid),
-      supabase.from("platform_posts").select("*").eq("uid", user.uid).order("engagement_rate",{ascending:false}).limit(9),
-      supabase.from("ai_insights").select("*").eq("uid", user.uid).eq("platform","all").order("generated_at",{ascending:false}).limit(1).maybeSingle(),
-      supabase.from("ad_metrics").select("*").eq("uid", user.uid).order("recorded_at",{ascending:false}).limit(20),
+      supabase.from("social_metrics").select("*").eq("workspace_id", workspace?.id ?? ""),
+      supabase.from("platform_posts").select("*").eq("workspace_id", workspace?.id ?? "").order("engagement_rate",{ascending:false}).limit(9),
+      supabase.from("ai_insights").select("*").eq("workspace_id", workspace?.id ?? "").eq("platform","all").order("generated_at",{ascending:false}).limit(1).maybeSingle(),
+      supabase.from("ad_metrics").select("*").eq("workspace_id", workspace?.id ?? "").order("recorded_at",{ascending:false}).limit(20),
     ]);
     setMetrics((mRes.data as SocialMetric[]) ?? []);
     setTopPosts((pRes.data as PlatformPost[]) ?? []);
@@ -49,7 +53,7 @@ export function Overview({ user, onNavigate }: { user: AppUser; onNavigate: (p: 
 
   const syncAll = async () => {
     setSyncing(true);
-    const { data: conns } = await supabase.from("platform_connections").select("*").eq("uid", user.uid).eq("connected", true);
+    const { data: conns } = await supabase.from("platform_connections").select("*").eq("workspace_id", workspace?.id ?? "").eq("connected", true);
     if (!conns?.length) { setSyncing(false); return; }
 
     for (const conn of conns) {
@@ -60,8 +64,18 @@ export function Overview({ user, onNavigate }: { user: AppUser; onNavigate: (p: 
         });
         const data = await res.json();
         if (data.metrics) {
-          const row = { uid: user.uid, platform: conn.platform, ...data.metrics, synced_at: new Date().toISOString() };
-          await supabase.from("social_metrics").upsert({ ...row, id: `${user.uid}_${conn.platform}` });
+          const row = { uid: user.uid, platform: conn.platform, workspace_id: workspace?.id, ...data.metrics, synced_at: new Date().toISOString() };
+          await supabase.from("social_metrics").upsert({ ...row, id: `${workspace?.id}_${conn.platform}` });
+
+          const today = new Date().toISOString().split("T")[0];
+          await supabase.from("metric_history").upsert({
+            id: `${workspace?.id}_${conn.platform}_${today}`, uid: user.uid, workspace_id: workspace?.id, platform: conn.platform, date: today,
+            followers: data.metrics.followers ?? 0, following: data.metrics.following ?? 0, posts: data.metrics.posts ?? 0,
+            likes: data.metrics.likes ?? 0, comments: data.metrics.comments ?? 0, shares: data.metrics.shares ?? 0,
+            reach: data.metrics.reach ?? 0, impressions: data.metrics.impressions ?? 0,
+            engagement_rate: data.metrics.engagement_rate ?? 0, profile_views: data.metrics.profile_views ?? 0,
+            recorded_at: new Date().toISOString(),
+          });
         }
         if (data.posts?.length) {
           const rows = data.posts.map((p: any, i: number) => ({ ...p, id:`${user.uid}_${conn.platform}_${p.post_id ?? i}`, uid:user.uid, platform:conn.platform, synced_at:new Date().toISOString() }));
@@ -84,9 +98,9 @@ export function Overview({ user, onNavigate }: { user: AppUser; onNavigate: (p: 
   const generateOverallInsights = async () => {
     setAiLoading(true);
     try {
-      const { data: m } = await supabase.from("social_metrics").select("*").eq("uid", user.uid);
-      const { data: p } = await supabase.from("platform_posts").select("*").eq("uid", user.uid).order("engagement_rate",{ascending:false}).limit(12);
-      const { data: ad } = await supabase.from("ad_metrics").select("*").eq("uid", user.uid).order("recorded_at",{ascending:false}).limit(10);
+      const { data: m } = await supabase.from("social_metrics").select("*").eq("workspace_id", workspace?.id ?? "");
+      const { data: p } = await supabase.from("platform_posts").select("*").eq("workspace_id", workspace?.id ?? "").order("engagement_rate",{ascending:false}).limit(12);
+      const { data: ad } = await supabase.from("ad_metrics").select("*").eq("workspace_id", workspace?.id ?? "").order("recorded_at",{ascending:false}).limit(10);
       if (!m?.length) return;
       const res = await fetch("/api/ai-insights", {
         method:"POST", headers:{"Content-Type":"application/json"},
@@ -135,7 +149,7 @@ export function Overview({ user, onNavigate }: { user: AppUser; onNavigate: (p: 
     CPC:  { value: cpc,  display: fmtCurrency(cpc) },
   };
 
-  if (loading) return <div className="flex items-center justify-center py-24"><Loader2 size={22} className="animate-spin" style={{ color:"var(--primary)" }}/></div>;
+  if (loading) return <LoadingInline />;
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
@@ -241,6 +255,9 @@ export function Overview({ user, onNavigate }: { user: AppUser; onNavigate: (p: 
           })}
         </div>
       </div>
+
+      {/* Aggregate growth trend */}
+      <GrowthTrend workspaceId={workspace?.id ?? ""} platform="all" title="Overall growth across all platforms" />
 
       {/* Platform cards */}
       <div>

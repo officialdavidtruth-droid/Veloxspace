@@ -1,5 +1,7 @@
+import { LoadingInline } from "./LoadingScreen";
 import React, { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
+import { useWorkspace } from "../lib/workspace";
 import { PLATFORMS, getPlatform } from "../lib/platforms";
 import type { AppUser } from "../lib/supabase";
 import type { PlatformConnection, PlatformId, ScheduledPost } from "../types";
@@ -10,6 +12,7 @@ const getPlatformEmoji = (id: string) =>
 
 export function Composer({ user }: { user: AppUser }) {
   const [connections, setConnections] = useState<Record<string, PlatformConnection>>({});
+  const { workspace } = useWorkspace();
   const [content, setContent] = useState("");
   const [mediaUrl, setMediaUrl] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -22,8 +25,8 @@ export function Composer({ user }: { user: AppUser }) {
 
   const load = async () => {
     const [cRes, hRes] = await Promise.all([
-      supabase.from("platform_connections").select("*").eq("uid", user.uid).eq("connected", true),
-      supabase.from("scheduled_posts").select("*").eq("uid", user.uid).order("created_at", { ascending: false }).limit(10),
+      supabase.from("platform_connections").select("*").eq("workspace_id", workspace?.id ?? "").eq("connected", true),
+      supabase.from("scheduled_posts").select("*").eq("workspace_id", workspace?.id ?? "").order("created_at", { ascending: false }).limit(10),
     ]);
     const map: Record<string, PlatformConnection> = {};
     (cRes.data ?? []).forEach((c: PlatformConnection) => { map[c.platform] = c; });
@@ -46,7 +49,7 @@ export function Composer({ user }: { user: AppUser }) {
     try {
       const res = await fetch("/api/publish-post", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ uid: user.uid, content, media_url: mediaUrl || undefined, platforms: Array.from(selected) }),
+        body: JSON.stringify({ uid: user.uid, workspace_id: workspace?.id ?? "", content, media_url: mediaUrl || undefined, platforms: Array.from(selected) }),
       });
       const data = await res.json();
       setResults(data.results);
@@ -63,7 +66,7 @@ export function Composer({ user }: { user: AppUser }) {
   const charCount = content.length;
   const overLimit = selected.has("twitter") && charCount > 280;
 
-  if (loading) return <div className="flex items-center justify-center py-24"><Loader2 size={22} className="animate-spin" style={{ color:"var(--primary)" }}/></div>;
+  if (loading) return <LoadingInline />;
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
